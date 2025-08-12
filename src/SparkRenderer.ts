@@ -619,6 +619,10 @@ export class SparkRenderer extends THREE.Mesh {
       this.uniforms.splatTexture.value = SparkRenderer.EMPTY_SPLAT_TEXTURE;
     }
 
+    window.queueMicrotask(() => {
+      (renderer.getContext() as WebGL2RenderingContext).flush();
+    })
+
     // Calculate the transform from the accumulator to the current camera
     const accumToWorld =
       viewpoint.display?.accumulator.toWorld ?? new THREE.Matrix4();

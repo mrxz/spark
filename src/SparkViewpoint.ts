@@ -27,7 +27,7 @@ import {
   unindentLines,
 } from "./dyno";
 import { withWorker } from "./splatWorker";
-import { FreeList, withinCoorientDist } from "./utils";
+import { FreeList, fromHalf, withinCoorientDist } from "./utils";
 
 export type SparkViewpointOptions = {
   /**
@@ -505,7 +505,7 @@ export class SparkViewpoint {
 
     if (!needsSort) {
       // Stop here, no sort necessary
-      return;
+      //return;
     }
 
     if (accumulator) {
@@ -724,7 +724,7 @@ export class SparkViewpoint {
       const reader = new Readback();
       const doubleSortReader = dynoBlock(
         { index: "int" },
-        { rgba8: "vec4" },
+        { rgba8: "uint" },
         ({ index }) => {
           if (!index) {
             throw new Error("No index");
@@ -752,8 +752,8 @@ export class SparkViewpoint {
             x: metric0,
             y: metric1,
           });
-          const rgba8 = uintToRgba8(packHalf2x16(combined));
-          return { rgba8 };
+          //const rgba8 = uintToRgba8(packHalf2x16(combined));
+          return { rgba8: packHalf2x16(combined) };
         },
       );
 

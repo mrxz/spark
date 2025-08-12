@@ -4,8 +4,9 @@ import { FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { SPLAT_TEX_HEIGHT, SPLAT_TEX_WIDTH } from "./defines";
 import { type Dyno, OutputRgba8, dynoBlock } from "./dyno";
 import { DynoProgram, DynoProgramTemplate } from "./dyno/program";
-import computeVec4Template from "./shaders/computeVec4.glsl";
-import { getTextureSize } from "./utils";
+//import computeVec4Template from "./shaders/computeVec4.glsl";
+import computeUintTemplate from "./shaders/computeUint.glsl";
+import { fromHalf, getTextureSize } from "./utils";
 
 // Readback can be used to run a Dyno program that maps an index to a 32-bit
 // RGBA8 value, which is the only allowed, portable readback format for WebGL2.
@@ -32,6 +33,11 @@ export class Readback {
   target?: THREE.WebGLArrayRenderTarget;
   capacity: number;
   count: number;
+
+  transformFeedback?: WebGLTransformFeedback;
+  transformProgram?: WebGLProgram;
+  transformTargetBuffer?: WebGLBuffer;
+  transformProgramUniforms: Record<string, WebGLUniformLocation|null> = {};
 
   constructor({ renderer }: { renderer?: THREE.WebGLRenderer } = {}) {
     this.renderer = renderer;
@@ -61,6 +67,15 @@ export class Readback {
     const newBuffer = new ArrayBuffer(bytes);
     if (buffer instanceof ArrayBuffer) {
       return newBuffer as B;
+    }
+
+    // Recreate WebGL buffer
+    if(this.transformTargetBuffer) {
+      const gl = this.renderer?.getContext() as WebGL2RenderingContext;
+      const buffer = this.transformTargetBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, bytes, gl.DYNAMIC_READ);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
 
     const ctor = buffer.constructor as { new (arrayBuffer: ArrayBuffer): B };
@@ -107,7 +122,7 @@ export class Readback {
         },
       );
       if (!Readback.programTemplate) {
-        Readback.programTemplate = new DynoProgramTemplate(computeVec4Template);
+        Readback.programTemplate = new DynoProgramTemplate(computeUintTemplate);
       }
       // Create a program from the template and graph
       program = new DynoProgram({
@@ -159,7 +174,67 @@ export class Readback {
     if (!this.target) {
       throw new Error("No target");
     }
+    if (!this.transformFeedback || !this.transformProgram || !this.transformTargetBuffer) {
+      throw new Error("Transform feedback not setup");
+    }
 
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const currentVao = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
+    const currentProgram = gl.getParameter(gl.CURRENT_PROGRAM);
+    const activeTexture = gl.getParameter(gl.ACTIVE_TEXTURE);
+    const currentBuffer = gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+    gl.bindVertexArray(null);
+    gl.useProgram(this.transformProgram);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.transformFeedback);
+    gl.enable(gl.RASTERIZER_DISCARD);
+
+    // Output (color buffer)
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, this.transformTargetBuffer);
+
+    // Uniforms
+    let texture0 = null;
+    {
+      const texture = material.uniforms['packedSplats_6'].value.texture;
+      gl.activeTexture(gl.TEXTURE0); // Activate Texture Slot
+      texture0 = gl.getParameter(gl.TEXTURE_BINDING_2D);
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, renderer.properties.get(texture)!.__webglTexture); // Bind Texture
+      gl.uniform1i(this.transformProgramUniforms['texture'], 0);
+    }
+    gl.uniform1i(this.transformProgramUniforms['numSplats'], count*2);
+    const sortRadial = material.uniforms['value_8'].value as boolean;
+    gl.uniform1i(this.transformProgramUniforms['value_8'], sortRadial ? 1 : 0);
+    const sortOrigin = material.uniforms['value_9'].value as THREE.Vector3;
+    gl.uniform3f(this.transformProgramUniforms['value_9'], sortOrigin.x, sortOrigin.y, sortOrigin.z);
+    const sortDirection = material.uniforms['value_10'].value as THREE.Vector3;
+    gl.uniform3f(this.transformProgramUniforms['value_10'], sortDirection.x, sortDirection.y, sortDirection.z);
+    const sortDepthBias = material.uniforms['value_11'].value as number;
+    gl.uniform1f(this.transformProgramUniforms['value_11'], sortDepthBias);
+    const sort360 = material.uniforms['value_12'].value as boolean;
+    gl.uniform1i(this.transformProgramUniforms['value_12'], sort360 ? 1 : 0);
+
+    // Execute
+    gl.beginTransformFeedback(gl.POINTS);
+    gl.drawArrays(gl.POINTS, 0, count); // Instanced?
+    gl.endTransformFeedback();
+
+
+    // Cleanup (FIXME: restore previously set state to avoid confusing Three.js)
+    gl.disable(gl.RASTERIZER_DISCARD);
+    gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+    gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+    gl.useProgram(currentProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, currentBuffer);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texture0);
+    /*
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texture1);
+    */
+    gl.activeTexture(activeTexture);
+    gl.bindVertexArray(currentVao); // FIXME: Capture current VAO
+
+
+    /*
     // Run the program in "layer" chunks, in horizontal row ranges,
     // that cover the total count of indices.
     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
@@ -186,6 +261,9 @@ export class Readback {
 
       baseIndex += SPLAT_TEX_WIDTH * layerYEnd;
     }
+
+    this.count = count;
+    */
 
     this.count = count;
   }
@@ -216,6 +294,7 @@ export class Readback {
     // so loop through them, initiate the readback, and collect the
     // completion promises.
 
+    /*
     const layerSize = SPLAT_TEX_WIDTH * SPLAT_TEX_HEIGHT;
     let baseIndex = 0;
     const promises = [];
@@ -248,7 +327,14 @@ export class Readback {
 
       baseIndex += SPLAT_TEX_WIDTH * layerYEnd;
     }
-    return Promise.all(promises).then(() => readback);
+    return Promise.all(promises).then(() => readback);*/
+
+    const gl = this.renderer?.getContext() as WebGL2RenderingContext;
+    gl.bindBuffer(gl.TRANSFORM_FEEDBACK_BUFFER, this.transformTargetBuffer as WebGLBuffer);
+    gl.getBufferSubData( gl.TRANSFORM_FEEDBACK_BUFFER, 0, readback as Uint16Array, 0, this.count*2);
+    //console.log(readback);
+    //console.log(fromHalf(readback[0]), fromHalf(readback[1]));
+    return Promise.resolve(readback);
   }
 
   // Perform render operation to run the Rgba8Readback program
@@ -309,6 +395,74 @@ export class Readback {
 
     const { program, material } = this.prepareProgramMaterial(reader);
     program.update();
+
+
+    // Setup transform feedback if not setup yet
+    if(!this.transformFeedback) {
+      const gl = this.renderer.getContext() as WebGL2RenderingContext;
+
+      // Shader program
+      function compileShader(source: string, isVert = true) {
+          const shader = gl.createShader(isVert ? gl.VERTEX_SHADER : gl.FRAGMENT_SHADER) as WebGLShader;
+          gl.shaderSource(shader, "#version 300 es\n" + source);
+          console.log(source);
+          gl.compileShader(shader);
+          if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+              console.log('SHADER COMPILE ERROR - isVert: ', isVert, 'MSG: ', gl.getShaderInfoLog(shader));
+              gl.deleteShader(shader);
+              return null;
+          }
+          return shader;
+      }
+      const vShader = compileShader(material.fragmentShader /*FIXME*/, true);
+      if (!vShader) {
+          throw new Error('Invalid vertex shader')
+      }
+      const fShader = compileShader(/*glsl*/`void main(){}`, false);
+      if (!fShader) {
+          gl.deleteShader(vShader);
+          throw new Error('Invalid fragment shader')
+      }
+      const program = gl.createProgram();
+      gl.attachShader(program, vShader);
+      gl.attachShader(program, fShader);
+      gl.transformFeedbackVaryings(program, ['target'], gl.INTERLEAVED_ATTRIBS);
+      gl.linkProgram(program);
+      gl.detachShader(program, vShader);
+      gl.detachShader(program, fShader);
+      gl.deleteShader(vShader);
+      gl.deleteShader(fShader);
+
+      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+          const error = 'LINK ERROR:' + gl.getProgramInfoLog(program);
+          gl.deleteProgram(program);
+          throw new Error(error);
+      }
+      this.transformProgram = program;
+
+      this.transformProgramUniforms['texture'] = gl.getUniformLocation(program, 'packedSplats_6.texture'); // uSampler2DArray
+      this.transformProgramUniforms['numSplats'] = gl.getUniformLocation(program, 'packedSplats_6.numSplats'); // int
+      this.transformProgramUniforms['rgbMinMaxLnScaleMinMax'] = gl.getUniformLocation(program, 'packedSplats_6.rgbMinMaxLnScaleMinMax'); // vec4
+      this.transformProgramUniforms['value_8'] = gl.getUniformLocation(program, 'value_8'); // bool
+      this.transformProgramUniforms['value_9'] = gl.getUniformLocation(program, 'value_9'); // vec3
+      this.transformProgramUniforms['value_10'] = gl.getUniformLocation(program, 'value_10'); // vec3
+      this.transformProgramUniforms['value_11'] = gl.getUniformLocation(program, 'value_11'); // float
+      this.transformProgramUniforms['value_12'] = gl.getUniformLocation(program, 'value_12'); // bool
+
+      // Setup (target) buffer
+      const buffer = this.transformTargetBuffer = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+      gl.bufferData(gl.ARRAY_BUFFER, count * 4, gl.DYNAMIC_READ);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+      // Transform feedback setup
+      this.transformFeedback = gl.createTransformFeedback();
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, this.transformFeedback);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, buffer);
+      gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+      gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+
+    }
 
     const renderState = this.saveRenderState(this.renderer);
 

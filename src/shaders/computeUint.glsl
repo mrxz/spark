@@ -350,11 +350,12 @@ ivec3 splatTexCoord(int index) {
     return ivec3(x, y, z);
 }
 
+
 uniform uint targetLayer;
 uniform int targetBase;
 uniform int targetCount;
 
-out vec4 target;
+flat out uint target;
 
 {{ GLOBALS }}
 
@@ -363,11 +364,17 @@ void computeReadback(int index) {
 }
 
 void main() {
+    //int targetIndex = int(targetLayer << SPLAT_TEX_LAYER_BITS) + int(uint(gl_FragCoord.y) << SPLAT_TEX_WIDTH_BITS) + int(gl_FragCoord.x);
+    //int index = targetIndex - targetBase;
     int index = int(gl_VertexID);
 
-    if ((index >= 0) && (index < targetCount)) {
+    if ((index >= 0)) {
         computeReadback(index);
     } else {
-        target = vec4(0.0, 0.0, 0.0, 0.0);
+        target = 0u;
     }
+    //target = packHalf2x16(vec2(INFINITY));
+
+    //uint temp = target;
+    //target = (temp & 0xFFu) << 8u | ((temp >> 8u) & 0xFFu) | ((temp >> 16u) & 0xFFu) << 24u | ((temp >> 24u) & 0xFFu) << 16u;
 }

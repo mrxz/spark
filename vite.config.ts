@@ -104,7 +104,7 @@ export default defineConfig(({ mode }) => {
       watch: {
         usePolling: true,
       },
-      port: 8080,
+      port: 4000,
     },
 
     optimizeDeps: {
