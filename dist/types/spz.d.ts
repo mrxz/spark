@@ -10,11 +10,13 @@ export declare class SpzReader {
     flags: number;
     flagAntiAlias: boolean;
     reserved: number;
+    headerParsed: boolean;
     parsed: boolean;
     constructor({ fileBytes }: {
         fileBytes: Uint8Array | ArrayBuffer;
     });
-    parseSplats(centerCallback?: (index: number, x: number, y: number, z: number) => void, alphaCallback?: (index: number, alpha: number) => void, rgbCallback?: (index: number, r: number, g: number, b: number) => void, scalesCallback?: (index: number, scaleX: number, scaleY: number, scaleZ: number) => void, quatCallback?: (index: number, quatX: number, quatY: number, quatZ: number, quatW: number) => void, shCallback?: (index: number, sh1: Float32Array, sh2?: Float32Array, sh3?: Float32Array) => void): void;
+    parseHeader(): Promise<void>;
+    parseSplats(centerCallback?: (index: number, x: number, y: number, z: number) => void, alphaCallback?: (index: number, alpha: number) => void, rgbCallback?: (index: number, r: number, g: number, b: number) => void, scalesCallback?: (index: number, scaleX: number, scaleY: number, scaleZ: number) => void, quatCallback?: (index: number, quatX: number, quatY: number, quatZ: number, quatW: number) => void, shCallback?: (index: number, sh1: Float32Array, sh2?: Float32Array, sh3?: Float32Array) => void): Promise<void>;
 }
 export declare const SPZ_MAGIC = 1347635022;
 export declare const SPZ_VERSION = 3;

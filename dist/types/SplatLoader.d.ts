@@ -58,8 +58,35 @@ export type PcSogsJson = {
         files: string[];
     };
 };
+export type PcSogsV2Json = {
+    version: 2;
+    count: number;
+    antialias?: boolean;
+    means: {
+        mins: number[];
+        maxs: number[];
+        files: string[];
+    };
+    scales: {
+        codebook: number[];
+        files: string[];
+    };
+    quats: {
+        files: string[];
+    };
+    sh0: {
+        codebook: number[];
+        files: string[];
+    };
+    shN?: {
+        count: number;
+        bands: number;
+        codebook: number[];
+        files: string[];
+    };
+};
 export declare function isPcSogs(input: ArrayBuffer | Uint8Array | string): boolean;
-export declare function tryPcSogs(input: ArrayBuffer | Uint8Array | string): PcSogsJson | undefined;
+export declare function tryPcSogs(input: ArrayBuffer | Uint8Array | string): PcSogsJson | PcSogsV2Json | undefined;
 export declare function tryPcSogsZip(input: ArrayBuffer | Uint8Array): {
     name: string;
     json: PcSogsJson;

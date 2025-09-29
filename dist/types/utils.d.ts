@@ -1,4 +1,3 @@
-import { Gunzip } from 'fflate';
 import * as THREE from "three";
 export declare function normalize(vec: number[]): number[];
 export declare function floatBitsToUint(f: number): number;
@@ -170,14 +169,13 @@ export declare function decompressPartialGzip(fileBytes: Uint8Array, numBytes: n
 export declare class GunzipReader {
     fileBytes: Uint8Array;
     chunkBytes: number;
-    offset: number;
     chunks: Uint8Array[];
     totalBytes: number;
-    gunzip: Gunzip;
+    reader: ReadableStreamDefaultReader;
     constructor({ fileBytes, chunkBytes, }: {
         fileBytes: Uint8Array;
         chunkBytes?: number;
     });
-    read(numBytes: number): Uint8Array;
+    read(numBytes: number): Promise<Uint8Array>;
 }
 export {};
