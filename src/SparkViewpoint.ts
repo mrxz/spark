@@ -795,13 +795,18 @@ export class SparkViewpoint {
   }
 }
 
-const defineComputeSortMetric = unindent(`
+const defineComputeSortMetric = unindent(/* glsl */ `
   float computeSort(Gsplat gsplat, bool sortRadial, vec3 sortOrigin, vec3 sortDirection, float sortDepthBias, bool sort360) {
     if (!isGsplatActive(gsplat.flags)) {
       return INFINITY;
     }
 
     vec3 center = gsplat.center - sortOrigin;
+    float angle = acos(dot(normalize(center), sortDirection));
+    if(angle > 0.9) {
+      return INFINITY;
+    }
+
     float biasedDepth = dot(center, sortDirection) + sortDepthBias;
     if (!sort360 && (biasedDepth <= 0.0)) {
       return INFINITY;
