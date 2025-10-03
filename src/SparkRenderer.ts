@@ -272,6 +272,10 @@ export class SparkRenderer extends THREE.Mesh {
     // and cull Gsplats individually in the shader
     this.frustumCulled = false;
 
+    // Set render order to ensure being rendered last in the transparent
+    // queue, allowing other objects to write their depth first.
+    this.renderOrder = Number.POSITIVE_INFINITY;
+
     this.renderer = options.renderer;
     this.material = material;
     this.uniforms = uniforms;
