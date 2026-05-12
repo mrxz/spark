@@ -1,5 +1,6 @@
 use std::array;
 
+use async_trait::async_trait;
 use js_sys::{Object, Reflect, Uint32Array};
 use spark_lib::{
     csplat::CsplatArray, decoder::{SetSplatEncoding, SplatEncoding, SplatGetter, SplatInit, SplatProps, SplatPropsMut, SplatReceiver, copy_getter_to_receiver}, gsplat::GsplatArray, splat_encode::{
@@ -159,27 +160,27 @@ impl PackedSplatsData {
         }
     }
 
-    pub fn to_gsplat_array(&mut self) -> anyhow::Result<GsplatArray> {
+    pub async fn to_gsplat_array(&mut self) -> anyhow::Result<GsplatArray> {
         let mut out = GsplatArray::new();
-        copy_getter_to_receiver(self, &mut out)?;
+        copy_getter_to_receiver(self, &mut out).await?;
         Ok(out)
     }
 
-    pub fn to_csplat_array(&mut self) -> anyhow::Result<CsplatArray> {
+    pub async fn to_csplat_array(&mut self) -> anyhow::Result<CsplatArray> {
         let mut out = CsplatArray::new_encoding(Some(self.encoding.clone()));
-        copy_getter_to_receiver(self, &mut out)?;
+        copy_getter_to_receiver(self, &mut out).await?;
         Ok(out)
     }
 
-    pub fn new_from_tsplat_array<TA: TsplatArray>(splats: &TA, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
-        Self::new_from_tsplat_array_with_lod(splats, false, encoding)
+    pub async fn new_from_tsplat_array<TA: TsplatArray>(splats: &TA, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
+        Self::new_from_tsplat_array_with_lod(splats, false, encoding).await
     }
 
-    pub fn new_from_tsplat_array_lod<TA: TsplatArray>(splats: &TA, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
-        Self::new_from_tsplat_array_with_lod(splats, true, encoding)
+    pub async fn new_from_tsplat_array_lod<TA: TsplatArray>(splats: &TA, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
+        Self::new_from_tsplat_array_with_lod(splats, true, encoding).await
     }
 
-    fn new_from_tsplat_array_with_lod<TA: TsplatArray>(splats: &TA, lod_tree: bool, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
+    async fn new_from_tsplat_array_with_lod<TA: TsplatArray>(splats: &TA, lod_tree: bool, encoding: Option<SplatEncoding>) -> anyhow::Result<Self> {
         const MAX_SPLAT_CHUNK: usize = 65536;
 
         let mut receiver = Self::new(encoding.unwrap_or_default());
@@ -303,7 +304,7 @@ impl PackedSplatsData {
             }
         }
 
-        receiver.finish()?;
+        receiver.finish().await?;
         Ok(receiver)
     }
 
@@ -334,6 +335,7 @@ impl PackedSplatsData {
     }
 }
 
+#[async_trait]
 impl SplatReceiver for PackedSplatsData {
     fn init_splats(&mut self, init: &SplatInit) -> anyhow::Result<()> {
         let (_, _, _, max_splats) = get_splat_tex_size(init.num_splats);
@@ -367,7 +369,7 @@ impl SplatReceiver for PackedSplatsData {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         self.invalidate_buffer();
         
         if self.child_counts.is_some() || self.child_starts.is_some() {

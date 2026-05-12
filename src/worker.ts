@@ -205,7 +205,7 @@ async function decodeBytesUrl({
     throw new Error("No url or fileBytes provided");
   }
 
-  const decoded = decoder.finish();
+  const decoded = await decoder.finish();
   return decoded;
 }
 
@@ -547,7 +547,7 @@ async function tinyLodPackedSplats({
   const base = Math.max(1.1, Math.min(2.0, lodBase ?? 1.5));
   const lodStart = performance.now();
   const filter = false;
-  const decoded = tiny_lod_packedsplats(
+  const decoded = await tiny_lod_packedsplats(
     numSplats,
     packedArray,
     extra as object,
@@ -581,7 +581,7 @@ async function qualityLodPackedSplats({
 }) {
   const base = Math.max(1.1, Math.min(2.0, lodBase ?? 1.75));
   const lodStart = performance.now();
-  const decoded = bhatt_lod_packedsplats(
+  const decoded = await bhatt_lod_packedsplats(
     numSplats,
     packedArray,
     extra as object,
@@ -615,7 +615,7 @@ async function tinyLodExtSplats({
   const base = Math.max(1.1, Math.min(2.0, lodBase ?? 1.5));
   const lodStart = performance.now();
   const filter = false;
-  const decoded = tiny_lod_extsplats(
+  const decoded = await tiny_lod_extsplats(
     numSplats,
     extArrays[0],
     extArrays[1],
@@ -649,7 +649,7 @@ async function qualityLodExtSplats({
 }) {
   const base = Math.max(1.1, Math.min(2.0, lodBase ?? 1.75));
   const lodStart = performance.now();
-  const decoded = bhatt_lod_extsplats(
+  const decoded = await bhatt_lod_extsplats(
     numSplats,
     extArrays[0],
     extArrays[1],

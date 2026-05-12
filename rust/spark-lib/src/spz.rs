@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use miniz_oxide::inflate::core::{decompress, DecompressorOxide};
 use miniz_oxide::inflate::core::inflate_flags::{
     TINFL_FLAG_HAS_MORE_INPUT,
@@ -549,6 +550,7 @@ fn parse_gzip_header(buffer: &mut Vec<u8>) -> anyhow::Result<bool> {
     Ok(true)
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for SpzDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.compressed.extend_from_slice(bytes);
@@ -556,7 +558,7 @@ impl<T: SplatReceiver> ChunkReceiver for SpzDecoder<T> {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         self.poll_decompress()?;
         if !self.done { return Err(anyhow::anyhow!("Truncated gzip stream")); }
         if let Some(state) = &self.state {
@@ -566,7 +568,7 @@ impl<T: SplatReceiver> ChunkReceiver for SpzDecoder<T> {
         } else {
             return Err(anyhow::anyhow!("Invalid SPZ stream"));
         }
-        self.splats.finish()?;
+        self.splats.finish().await?;
         Ok(())
     }
 }

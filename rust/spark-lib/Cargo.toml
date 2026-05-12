@@ -7,9 +7,13 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 
+[features]
+web_decode_image = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:serde-wasm-bindgen"]
+
 [dependencies]
 ahash.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 glam.workspace = true
 half.workspace = true
 ordered-float.workspace = true
@@ -23,3 +27,8 @@ image.workspace = true
 hnsw.workspace = true
 rand_pcg.workspace = true
 space.workspace = true
+futures.workspace = true
+serde-wasm-bindgen = { workspace = true, optional = true }
+js-sys = { workspace = true, optional = true }
+wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }

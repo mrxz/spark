@@ -1,6 +1,14 @@
 use std::{collections::HashMap, io::Cursor};
 
 use anyhow::{anyhow, Context};
+use async_trait::async_trait;
+#[cfg(feature = "web_decode_image")]
+use wasm_bindgen_futures::spawn_local;
+#[cfg(feature = "web_decode_image")]
+use futures::channel::oneshot;
+#[cfg(feature = "web_decode_image")]
+use wasm_bindgen::prelude::*;
+#[cfg(not(feature = "web_decode_image"))]
 use image::{DynamicImage, GenericImageView, ImageReader};
 use serde_json;
 use serde::Deserialize;
@@ -122,13 +130,14 @@ impl<T: SplatReceiver> SogsDecoder<T> {
     }
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for SogsDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.buffer.extend_from_slice(bytes);
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         if self.buffer.len() < 4 {
             return Err(anyhow!("SOGS file too small"));
         }
@@ -136,12 +145,12 @@ impl<T: SplatReceiver> ChunkReceiver for SogsDecoder<T> {
         if magic != PK_MAGIC {
             return Err(anyhow!("Not a ZIP/SOGS file"));
         }
-        decode_sogs(&self.buffer, &mut self.splats, None)?;
+        decode_sogs(&self.buffer, &mut self.splats, None).await?;
         Ok(())
     }
 }
 
-fn decode_sogs<T: SplatReceiver>(bytes: &[u8], splats: &mut T, _pathname: Option<&str>) -> anyhow::Result<()> {
+async fn decode_sogs<T: SplatReceiver>(bytes: &[u8], splats: &mut T, _pathname: Option<&str>) -> anyhow::Result<()> {
     let cursor = Cursor::new(bytes);
     let mut zip = ZipArchive::new(cursor)?;
 
@@ -169,20 +178,20 @@ fn decode_sogs<T: SplatReceiver>(bytes: &[u8], splats: &mut T, _pathname: Option
     let mut file_cache: HashMap<String, Vec<u8>> = HashMap::new();
     preload_all(&meta, &prefix, &mut zip, &mut file_cache)?;
 
-    let mut get_file = |name: &str| -> anyhow::Result<Vec<u8>> {
+    let mut get_file = move |name: &str| -> anyhow::Result<Vec<u8>> {
         file_cache.get(name).cloned().ok_or_else(|| anyhow!("Missing file {name} in cache"))
     };
 
     match meta {
-        PcSogsRoot::V2(v2) => decode_v2(v2, splats, &mut get_file),
-        PcSogsRoot::V1(v1) => decode_v1(v1, splats, &mut get_file),
+        PcSogsRoot::V2(v2) => decode_v2(v2, splats, &mut get_file).await,
+        PcSogsRoot::V1(v1) => decode_v1(v1, splats, &mut get_file).await,
     }
 }
 
-fn decode_v2<T: SplatReceiver>(
+async fn decode_v2<T: SplatReceiver>(
     meta: PcSogsV2,
     splats: &mut T,
-    get_file: &mut dyn FnMut(&str) -> anyhow::Result<Vec<u8>>,
+    get_file: &mut (dyn FnMut(&str) -> anyhow::Result<Vec<u8>> + Send),
 ) -> anyhow::Result<()> {
     let _ = meta.version;
     let num_splats = meta.count;
@@ -191,16 +200,16 @@ fn decode_v2<T: SplatReceiver>(
     }).unwrap_or(0);
     splats.init_splats(&SplatInit { num_splats, max_sh_degree, lod_tree: false })?;
 
-    let means0 = decode_rgba(&get_file(&meta.means.files[0])?)
-        .context("decode means[0]")?;
-    let means1 = decode_rgba(&get_file(&meta.means.files[1])?)
-        .context("decode means[1]")?;
-    let scales_img = decode_rgba(&get_file(&meta.scales.files[0])?)
-        .context("decode scales")?;
-    let quats_img = decode_rgba(&get_file(&meta.quats.files[0])?)
-        .context("decode quats")?;
-    let sh0_img = decode_rgba(&get_file(&meta.sh0.files[0])?)
-        .context("decode sh0")?;
+    let fut_means0 = decode_image(get_file(&meta.means.files[0])?);
+    let fut_means1 = decode_image(get_file(&meta.means.files[1])?);
+    let fut_scales_img = decode_image(get_file(&meta.scales.files[0])?);
+    let fut_quats_img = decode_image(get_file(&meta.quats.files[0])?);
+    let fut_sh0_img = decode_image(get_file(&meta.sh0.files[0])?);
+
+    let (means0, means1, scales_img, quats_img, sh0_img) = {
+        let (means0, means1, scales_img, quats_img, sh0_img) = futures::join!(fut_means0, fut_means1, fut_scales_img, fut_quats_img, fut_sh0_img);
+        (means0?, means1?, scales_img?, quats_img?, sh0_img?)
+    };
 
     let mut center = vec![0.0f32; num_splats * 3];
     let mut scale = vec![0.0f32; num_splats * 3];
@@ -227,7 +236,7 @@ fn decode_v2<T: SplatReceiver>(
             &mut sh1,
             &mut sh2,
             &mut sh3,
-        )?;
+        ).await?;
     }
 
     emit_to_receiver(
@@ -242,13 +251,13 @@ fn decode_v2<T: SplatReceiver>(
         &sh1,
         &sh2,
         &sh3,
-    )
+    ).await
 }
 
-fn decode_v1<T: SplatReceiver>(
+async fn decode_v1<T: SplatReceiver>(
     meta: PcSogsV1,
     splats: &mut T,
-    get_file: &mut dyn FnMut(&str) -> anyhow::Result<Vec<u8>>,
+    get_file: &mut (dyn FnMut(&str) -> anyhow::Result<Vec<u8>> + Send),
 ) -> anyhow::Result<()> {
     let num_splats = meta.means.shape[0];
     if meta.quats.encoding.as_deref() != Some("quaternion_packed") {
@@ -270,16 +279,16 @@ fn decode_v1<T: SplatReceiver>(
 
     splats.init_splats(&SplatInit { num_splats, max_sh_degree, lod_tree: false })?;
 
-    let means0 = decode_rgba(&get_file(&meta.means.files[0])?)
-        .context("decode means[0]")?;
-    let means1 = decode_rgba(&get_file(&meta.means.files[1])?)
-        .context("decode means[1]")?;
-    let scales_img = decode_rgba(&get_file(&meta.scales.files[0])?)
-        .context("decode scales")?;
-    let quats_img = decode_rgba(&get_file(&meta.quats.files[0])?)
-        .context("decode quats")?;
-    let sh0_img = decode_rgba(&get_file(&meta.sh0.files[0])?)
-        .context("decode sh0")?;
+    let fut_means0 = decode_image(get_file(&meta.means.files[0])?);
+    let fut_means1 = decode_image(get_file(&meta.means.files[1])?);
+    let fut_scales_img = decode_image(get_file(&meta.scales.files[0])?);
+    let fut_quats_img = decode_image(get_file(&meta.quats.files[0])?);
+    let fut_sh0_img = decode_image(get_file(&meta.sh0.files[0])?);
+
+    let (means0, means1, scales_img, quats_img, sh0_img) = {
+        let (means0, means1, scales_img, quats_img, sh0_img) = futures::join!(fut_means0, fut_means1, fut_scales_img, fut_quats_img, fut_sh0_img);
+        (means0?, means1?, scales_img?, quats_img?, sh0_img?)
+    };
 
     let mut center = vec![0.0f32; num_splats * 3];
     let mut scale = vec![0.0f32; num_splats * 3];
@@ -304,7 +313,7 @@ fn decode_v1<T: SplatReceiver>(
             &mut sh1,
             &mut sh2,
             &mut sh3,
-        )?;
+        ).await?;
     }
 
     emit_to_receiver(
@@ -319,7 +328,7 @@ fn decode_v1<T: SplatReceiver>(
         &sh1,
         &sh2,
         &sh3,
-    )
+    ).await
 }
 
 fn decode_means(
@@ -445,16 +454,16 @@ fn decode_sh0_v1(mins: &[f32; 4], maxs: &[f32; 4], img: &ImageData, out_rgb: &mu
     Ok(())
 }
 
-fn decode_shn_v2(
+async fn decode_shn_v2(
     shn: ShNV2,
-    get_file: &mut dyn FnMut(&str) -> anyhow::Result<Vec<u8>>,
+    get_file: &mut (dyn FnMut(&str) -> anyhow::Result<Vec<u8>> + Send),
     num_splats: usize,
     sh1: &mut [f32],
     sh2: &mut [f32],
     sh3: &mut [f32],
 ) -> anyhow::Result<()> {
-    let centroids = decode_image(&get_file(&shn.files[0])?)?;
-    let labels = decode_image(&get_file(&shn.files[1])?)?;
+    let centroids = decode_image(get_file(&shn.files[0])?).await?;
+    let labels = decode_image(get_file(&shn.files[1])?).await?;
     let lookup = shn.codebook;
     let use_sh1 = shn.bands >= 1;
     let use_sh2 = shn.bands >= 2;
@@ -488,17 +497,17 @@ fn decode_shn_v2(
     Ok(())
 }
 
-fn decode_shn_v1(
+async fn decode_shn_v1(
     shn: ShNV1,
-    get_file: &mut dyn FnMut(&str) -> anyhow::Result<Vec<u8>>,
+    get_file: &mut (dyn FnMut(&str) -> anyhow::Result<Vec<u8>> + Send),
     num_splats: usize,
     max_sh_degree: usize,
     sh1: &mut [f32],
     sh2: &mut [f32],
     sh3: &mut [f32],
 ) -> anyhow::Result<()> {
-    let centroids = decode_image(&get_file(&shn.files[0])?)?;
-    let labels = decode_image(&get_file(&shn.files[1])?)?;
+    let centroids = decode_image(get_file(&shn.files[0])?).await?;
+    let labels = decode_image(get_file(&shn.files[1])?).await?;
     let lookup: Vec<f32> = (0..256)
         .map(|i| shn.mins + (shn.maxs - shn.mins) * (i as f32 / 255.0))
         .collect();
@@ -531,7 +540,7 @@ fn decode_shn_v1(
     Ok(())
 }
 
-fn emit_to_receiver<T: SplatReceiver>(
+async fn emit_to_receiver<T: SplatReceiver>(
     splats: &mut T,
     num_splats: usize,
     max_sh_degree: usize,
@@ -566,7 +575,7 @@ fn emit_to_receiver<T: SplatReceiver>(
         );
         base += count;
     }
-    splats.finish()
+    splats.finish().await
 }
 
 fn preload_all(
@@ -622,6 +631,7 @@ fn preload_file(
     Ok(())
 }
 
+#[derive(Deserialize)]
 struct ImageData {
     rgba: Vec<u8>,
     width: usize,
@@ -629,13 +639,46 @@ struct ImageData {
     height: usize,
 }
 
-fn decode_rgba(bytes: &[u8]) -> anyhow::Result<ImageData> {
-    let img = decode_image(bytes)?;
-    Ok(img)
+#[cfg(feature = "web_decode_image")]
+#[derive(Deserialize)]
+struct ImageDataPtr {
+    ptr: u32,
+    len: usize,
+    width: usize,
+    #[allow(dead_code)]
+    height: usize,
 }
 
-fn decode_image(bytes: &[u8]) -> anyhow::Result<ImageData> {
-    let img = ImageReader::new(Cursor::new(bytes))
+#[cfg(feature = "web_decode_image")]
+#[wasm_bindgen(module = "/js/decode_image.js")]
+extern "C" {
+    async fn decodeImage(bytes: js_sys::Uint8Array, wasm: JsValue) -> JsValue;
+}
+
+#[cfg(feature = "web_decode_image")]
+async fn decode_image(bytes: Vec<u8>) -> anyhow::Result<ImageData> {
+    let (tx, rx) = oneshot::channel();
+
+    spawn_local(async move {
+        let ptr = bytes.as_ptr() as u32;
+        let len = bytes.len() as usize;
+
+        let uint8array = unsafe {
+            js_sys::Uint8Array::view(std::slice::from_raw_parts(ptr as *const u8, len))
+        };
+        let result = decodeImage(uint8array, wasm_bindgen::instance()).await;
+        let image_data: ImageDataPtr = serde_wasm_bindgen::from_value(result).unwrap();
+        let rgba = unsafe { Vec::from_raw_parts(image_data.ptr as *mut u8, image_data.len, image_data.len) };
+        let _ = tx.send(ImageData { rgba: rgba, width: image_data.width, height: image_data.height });
+    });
+
+    Ok(rx.await?)
+}
+
+
+#[cfg(not(feature = "web_decode_image"))]
+async fn decode_image(bytes: Vec<u8>) -> anyhow::Result<ImageData> {
+    let img = ImageReader::new(Cursor::new(&bytes))
         .with_guessed_format()?
         .decode()?;
     let (width, height) = img.dimensions();

@@ -49,8 +49,8 @@ impl ChunkDecoder {
     }
 
     #[wasm_bindgen]
-    pub fn finish(mut self) -> Result<JsValue, JsValue> {
-        self.receiver.finish().map_err(|e| JsValue::from_str(&e.to_string()))?;
+    pub async fn finish(mut self) -> Result<JsValue, JsValue> {
+        self.receiver.finish().await.map_err(|e| JsValue::from_str(&e.to_string()))?;
         let (receiver, on_finish) = self.into_inner();
         on_finish(receiver)
     }

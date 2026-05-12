@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 
 use crate::decoder::{ChunkReceiver, SplatGetter, SplatInit, SplatProps, SplatReceiver};
 
@@ -23,13 +24,14 @@ impl<T: SplatReceiver> AntiSplatDecoder<T> {
     }
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for AntiSplatDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.buffer.extend_from_slice(bytes);
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         let len = self.buffer.len();
         if len % ANTISPLAT_BYTES_PER_SPLAT != 0 {
             return Err(anyhow!("Invalid .splat file size"));
@@ -123,7 +125,7 @@ impl<T: SplatReceiver> ChunkReceiver for AntiSplatDecoder<T> {
             base += count;
         }
 
-        self.splats.finish()?;
+        self.splats.finish().await?;
         Ok(())
     }
 }

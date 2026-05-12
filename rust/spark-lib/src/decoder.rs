@@ -1,5 +1,6 @@
 use std::any::Any;
 
+use async_trait::async_trait;
 use miniz_oxide::inflate::{core::{decompress, inflate_flags::{TINFL_FLAG_HAS_MORE_INPUT, TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF}, DecompressorOxide}, TINFLStatus};
 use serde::{Deserialize, Serialize};
 
@@ -12,9 +13,10 @@ use crate::{
     spz::{SPZ_MAGIC, SpzDecoder}
 };
 
-pub trait ChunkReceiver: Any {
+#[async_trait]
+pub trait ChunkReceiver: Send + Any {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()>;
-    fn finish(&mut self) -> anyhow::Result<()>;
+    async fn finish(&mut self) -> anyhow::Result<()>;
 }
 
 impl dyn ChunkReceiver {
@@ -139,10 +141,11 @@ impl<'a> Default for SplatProps<'a> {
     }
 }
 
+#[async_trait]
 #[allow(unused)]
-pub trait SplatReceiver: 'static {
+pub trait SplatReceiver: Send + 'static {
     fn init_splats(&mut self, init: &SplatInit) -> anyhow::Result<()> { Ok(()) }
-    fn finish(&mut self) -> anyhow::Result<()> { Ok(()) }
+    async fn finish(&mut self) -> anyhow::Result<()> { Ok(()) }
     fn debug(&self, value: usize) { println!("debug: {}", value); }
     fn set_encoding(&mut self, encoding: &SetSplatEncoding) -> anyhow::Result<()> { Ok(()) }
 
@@ -460,6 +463,7 @@ impl<T: SplatReceiver> MultiDecoder<T> {
 
 const GZIP_MAGIC: u32 = 0x00088b1f; // Gzip deflate
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for MultiDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         if self.file_type.is_none() {
@@ -518,11 +522,11 @@ impl<T: SplatReceiver> ChunkReceiver for MultiDecoder<T> {
         }
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         if self.file_type.is_none() {
             return Err(anyhow::anyhow!("Unknown file type"));
         }
-        self.inner.as_mut().unwrap().finish()
+        self.inner.as_mut().unwrap().finish().await
     }
 }
 
@@ -630,7 +634,7 @@ fn try_gunzip(buffer: &[u8], max_bytes: usize) -> anyhow::Result<Option<Vec<u8>>
     }
 }
 
-pub fn copy_getter_to_receiver<G: SplatGetter, R: SplatReceiver>(getter: &mut G, receiver: &mut R) -> anyhow::Result<()> {
+pub async fn copy_getter_to_receiver<G: SplatGetter, R: SplatReceiver>(getter: &mut G, receiver: &mut R) -> anyhow::Result<()> {
     const MAX_SPLAT_CHUNK: usize = 65536;
 
     let num_splats = getter.num_splats();
@@ -716,6 +720,6 @@ pub fn copy_getter_to_receiver<G: SplatGetter, R: SplatReceiver>(getter: &mut G,
         base += count;
     }
 
-    receiver.finish()?;
+    receiver.finish().await?;
     Ok(())
 }

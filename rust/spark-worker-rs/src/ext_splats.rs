@@ -1,5 +1,6 @@
 use std::array;
 
+use async_trait::async_trait;
 use js_sys::{Array, Object, Reflect, Uint32Array};
 use spark_lib::{
     decoder::{SetSplatEncoding, SplatEncoding, SplatGetter, SplatInit, SplatProps, SplatPropsMut, SplatReceiver, copy_getter_to_receiver},
@@ -188,15 +189,15 @@ impl ExtSplatsData {
         }
     }
 
-    pub fn new_from_tsplat_array<TA: TsplatArray>(splats: &TA) -> anyhow::Result<Self> {
-        Self::new_from_tsplat_array_with_lod(splats, false)
+    pub async fn new_from_tsplat_array<TA: TsplatArray>(splats: &TA) -> anyhow::Result<Self> {
+        Self::new_from_tsplat_array_with_lod(splats, false).await
     }
 
-    pub fn new_from_tsplat_array_lod<TA: TsplatArray>(splats: &TA) -> anyhow::Result<Self> {
-        Self::new_from_tsplat_array_with_lod(splats, true)
+    pub async fn new_from_tsplat_array_lod<TA: TsplatArray>(splats: &TA) -> anyhow::Result<Self> {
+        Self::new_from_tsplat_array_with_lod(splats, true).await
     }
 
-    fn new_from_tsplat_array_with_lod<TA: TsplatArray>(splats: &TA, lod_tree: bool) -> anyhow::Result<Self> {
+    async fn new_from_tsplat_array_with_lod<TA: TsplatArray>(splats: &TA, lod_tree: bool) -> anyhow::Result<Self> {
         const MAX_SPLAT_CHUNK: usize = 65536;
 
         let mut receiver = Self::new();
@@ -313,20 +314,20 @@ impl ExtSplatsData {
             }
         }
 
-        receiver.finish()?;
+        receiver.finish().await?;
         Ok(receiver)
     }
 
-    pub fn to_gsplat_array(&mut self) -> anyhow::Result<GsplatArray> {
+    pub async fn to_gsplat_array(&mut self) -> anyhow::Result<GsplatArray> {
         let mut out = GsplatArray::new();
-        copy_getter_to_receiver(self, &mut out)?;
+        copy_getter_to_receiver(self, &mut out).await?;
         Ok(out)
     }
 
     #[allow(dead_code)]
-    pub fn to_csplat_array(&mut self) -> anyhow::Result<CsplatArray> {
+    pub async fn to_csplat_array(&mut self) -> anyhow::Result<CsplatArray> {
         let mut out = CsplatArray::new();
-        copy_getter_to_receiver(self, &mut out)?;
+        copy_getter_to_receiver(self, &mut out).await?;
         Ok(out)
     }
 
@@ -363,6 +364,7 @@ impl ExtSplatsData {
     }
 }
 
+#[async_trait]
 impl SplatReceiver for ExtSplatsData {
     fn init_splats(&mut self, init: &SplatInit) -> anyhow::Result<()> {
         let (_, _, _, max_splats) = get_splat_tex_size(init.num_splats);
@@ -399,7 +401,7 @@ impl SplatReceiver for ExtSplatsData {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         self.invalidate_buffers();
 
         if self.child_counts.is_some() || self.child_starts.is_some() {

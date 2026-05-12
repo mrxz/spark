@@ -1,6 +1,7 @@
 use std::array;
 use std::io::Write;
 
+use async_trait::async_trait;
 use half::f16;
 
 use ordered_float::OrderedFloat;
@@ -1808,6 +1809,7 @@ impl<T: SplatReceiver> RadDecoder<T> {
     }
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for RadDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.buffer.extend_from_slice(bytes);
@@ -1815,12 +1817,12 @@ impl<T: SplatReceiver> ChunkReceiver for RadDecoder<T> {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         self.poll()?;
         if !self.done {
             return Err(anyhow::anyhow!("Incomplete RAD chunk"));
         }
-        self.splats.finish()?;
+        self.splats.finish().await?;
         Ok(())
     }
 }

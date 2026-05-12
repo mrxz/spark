@@ -1,6 +1,7 @@
 
 use std::array;
 
+use async_trait::async_trait;
 use glam::{Mat3A, Quat, Vec3, Vec3A};
 use half::f16;
 use smallvec::SmallVec;
@@ -727,6 +728,7 @@ pub fn ellipsoid_area(scales: Vec3A) -> f32 {
     4.0 * std::f32::consts::PI * (numerator / 3.0).powf(1.0 / P)
 }
 
+#[async_trait]
 impl SplatReceiver for GsplatArray {
     fn init_splats(&mut self, init: &SplatInit) -> anyhow::Result<()> {
         self.max_sh_degree = init.max_sh_degree;
@@ -755,7 +757,7 @@ impl SplatReceiver for GsplatArray {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
 

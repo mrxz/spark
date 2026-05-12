@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use glam::{Mat3A, Quat, Vec3, Vec3A};
 use half::f16;
 use smallvec::SmallVec;
@@ -437,6 +438,7 @@ impl TsplatArray for CsplatArray {
     }
 }
 
+#[async_trait]
 impl SplatReceiver for CsplatArray {
     fn init_splats(&mut self, init: &SplatInit) -> anyhow::Result<()> {
         self.max_sh_degree = init.max_sh_degree;
@@ -474,7 +476,7 @@ impl SplatReceiver for CsplatArray {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         Ok(())
     }
 

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use half::f16;
 
 use crate::decoder::{ChunkReceiver, SplatGetter, SplatInit, SplatProps, SplatReceiver};
@@ -82,13 +83,14 @@ impl<T: SplatReceiver> KsplatDecoder<T> {
     }
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for KsplatDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.buffer.extend_from_slice(bytes);
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         if self.buffer.len() < HEADER_BYTES {
             return Err(anyhow!("File too small for ksplat header"));
         }
@@ -371,7 +373,7 @@ impl<T: SplatReceiver> ChunkReceiver for KsplatDecoder<T> {
             header_offset += SECTION_BYTES;
         }
 
-        self.splats.finish()?;
+        self.splats.finish().await?;
         Ok(())
     }
 }

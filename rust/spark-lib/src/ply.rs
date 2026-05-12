@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::f32::consts::SQRT_2;
 
 use anyhow::anyhow;
+use async_trait::async_trait;
 
 use crate::decoder::{ChunkReceiver, SplatGetter, SplatInit, SplatProps, SplatReceiver};
 
@@ -239,6 +240,7 @@ impl<T: SplatReceiver> PlyDecoder<T> {
     }
 }
 
+#[async_trait]
 impl<T: SplatReceiver> ChunkReceiver for PlyDecoder<T> {
     fn push(&mut self, bytes: &[u8]) -> anyhow::Result<()> {
         self.buffer.extend_from_slice(bytes);
@@ -246,7 +248,7 @@ impl<T: SplatReceiver> ChunkReceiver for PlyDecoder<T> {
         Ok(())
     }
 
-    fn finish(&mut self) -> anyhow::Result<()> {
+    async fn finish(&mut self) -> anyhow::Result<()> {
         self.poll()?;
 
         let Some(state) = self.state.as_ref() else {
@@ -277,7 +279,7 @@ impl<T: SplatReceiver> ChunkReceiver for PlyDecoder<T> {
             },
         }
 
-        self.splats.finish()?;
+        self.splats.finish().await?;
         Ok(())
     }
 }
