@@ -127,7 +127,7 @@ export default defineConfig(({ mode }) => {
       },
       sourcemap: true,
       rollupOptions: {
-        external: ["three", /^three\/addons/],
+        external: ["three"],
         output: {
           globals: {
             three: "THREE",
