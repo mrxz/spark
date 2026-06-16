@@ -16,7 +16,12 @@ import {
   SplatFileType,
 } from "./defines";
 import { type DynoUsampler2DArray, pagedSplatTexCoord } from "./dyno";
-import { decodeExtSplat, getTextureSize, unpackSplat } from "./utils";
+import {
+  decodeExtSplat,
+  getTextureSize,
+  unpackSplat,
+  uploadU32DataTextureRows,
+} from "./utils";
 import * as wasm from "./wasm";
 
 export interface PagedSplatsOptions {
@@ -345,26 +350,13 @@ export class PagedSplats implements SplatSource {
       const textureIndices = indicesTexture.image.data as Uint32Array;
       textureIndices.set(indices.subarray(0, numSplats));
 
-      const gl = renderer.getContext() as WebGL2RenderingContext;
-      renderer.state.activeTexture(gl.TEXTURE0);
-      renderer.state.bindTexture(
-        gl.TEXTURE_2D,
-        getGlTexture(renderer, indicesTexture),
-      );
-      gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,
-        0,
-        0,
+      uploadU32DataTextureRows(
+        renderer,
+        indicesTexture,
         4096,
         rows,
-        gl.RGBA_INTEGER,
-        gl.UNSIGNED_INT,
-        indices,
+        textureIndices,
       );
-      renderer.state.bindTexture(gl.TEXTURE_2D, null);
     }
   }
 
@@ -1301,23 +1293,6 @@ function uploadTextureLayer(
   texture.value.addLayerUpdate(layer);
   texture.value.needsUpdate = true;
   texture.value.source.dataReady = true;
-}
-
-function getGlTexture(
-  renderer: THREE.WebGLRenderer,
-  texture: THREE.Texture,
-): WebGLTexture {
-  if (!renderer.properties.has(texture)) {
-    throw new Error("texture not found");
-  }
-  const props = renderer.properties.get(texture) as {
-    __webglTexture: WebGLTexture;
-  };
-  const glTexture = props.__webglTexture;
-  if (!glTexture) {
-    throw new Error("texture not found");
-  }
-  return glTexture;
 }
 
 async function fetchRange({
