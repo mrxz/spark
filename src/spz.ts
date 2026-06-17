@@ -1,10 +1,11 @@
+import type { PackedSplats } from "./PackedSplats";
 import {
   type TranscodeSpzInput,
   getSplatFileType,
   getSplatFileTypeFromPath,
 } from "./SplatLoader";
 
-import { decode_to_gsplatarray } from "spark-rs";
+import { decode_to_gsplatarray, packedsplats_to_gsplatarray } from "spark-rs";
 
 export async function transcodeSpz(input: TranscodeSpzInput) {
   const splatArrays = [];
@@ -58,4 +59,22 @@ export async function transcodeSpz(input: TranscodeSpzInput) {
   const spzBytes = finalSplats.encode_to_spz(maxSh ?? 3, fractionalBits);
 
   return { fileBytes: spzBytes, clippedCount: 0 };
+}
+
+export function writeSpz(
+  packedSplats: PackedSplats,
+  maxSh?: number,
+  fractionalBits?: number,
+) {
+  if (!packedSplats.packedArray) {
+    throw new Error("");
+  }
+  const gsplats = packedsplats_to_gsplatarray(
+    packedSplats.numSplats,
+    packedSplats.packedArray,
+    packedSplats.extra,
+    packedSplats.splatEncoding,
+  );
+  const spzBytes = gsplats.encode_to_spz(maxSh ?? 3, fractionalBits ?? 12);
+  return { fileBytes: spzBytes };
 }
