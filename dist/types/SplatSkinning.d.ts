@@ -1,6 +1,6 @@
-import { SplatMesh } from './SplatMesh';
-import { CovSplat, DynoUniform, DynoVal, Gsplat } from './dyno';
 import * as THREE from "three";
+import type { SplatMesh } from "./SplatMesh";
+import { CovSplat, DynoUniform, type DynoVal, Gsplat } from "./dyno";
 export declare enum SplatSkinningMode {
     DUAL_QUATERNION = "dual_quaternion",
     LINEAR_BLEND = "linear_blend"

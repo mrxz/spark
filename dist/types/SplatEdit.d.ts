@@ -1,5 +1,5 @@
-import { CovSplat, DynoUniform, DynoVal, Gsplat } from './dyno';
 import * as THREE from "three";
+import { CovSplat, DynoUniform, type DynoVal, Gsplat } from "./dyno";
 export declare enum SplatEditSdfType {
     ALL = "all",
     PLANE = "plane",
